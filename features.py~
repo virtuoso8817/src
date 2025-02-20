@@ -1,0 +1,44 @@
+import os
+import socket
+from encryption import encrypt_message, decrypt_message
+
+
+def send_file(client_socket, file_path, file_type):
+    """Send an encrypted file with metadata."""
+    try:
+        with open(file_path, 'rb') as file:
+            file_data = file.read()
+
+        encrypted_data = encrypt_message(file_data.decode('latin-1')).encode('latin-1')
+        metadata = f"FILE::{file_type}::{os.path.basename(file_path)}::{len(encrypted_data)}"
+        client_socket.send(metadata.encode())
+        client_socket.send(encrypted_data)
+        print(f"Sent {file_type}: {os.path.basename(file_path)}")
+    except Exception as e:
+        print(f"Error sending file: {e}")
+
+
+def receive_file(client_socket, chat_history):
+    """Receive and decrypt a file, then save and display a clickable link."""
+    try:
+        metadata = client_socket.recv(1024).decode()
+        if metadata.startswith("FILE::"):
+            _, file_type, file_name, file_size = metadata.split("::")
+            file_size = int(file_size)
+
+            encrypted_data = client_socket.recv(file_size)
+            decrypted_data = decrypt_message(encrypted_data.decode('latin-1')).encode('latin-1')
+
+            save_path = f"received_{file_name}"
+            with open(save_path, 'wb') as file:
+                file.write(decrypted_data)
+
+            chat_history.insert('end', f"Received {file_type}: ")
+            chat_history.insert('end', file_name, ('link', save_path))
+            chat_history.insert('end', '\n')
+            print(f"Received and saved {file_type}: {file_name}")
+        else:
+            print("Invalid file metadata received.")
+    except Exception as e:
+        print(f"Error receiving file: {e}")
+
