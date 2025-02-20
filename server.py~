@@ -1,7 +1,7 @@
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox,simpledialog
+from tkinter import messagebox,simpledialog, filedialog
 from encryption import encrypt_message, decrypt_message
 from datetime import datetime
 import pygame
@@ -39,14 +39,17 @@ print(f"Server username set as: {server_username}")
 pygame.mixer.init()
 
 # Load the notification sound
-notification_sound = "notification1.mp3"  # Replace with a valid sound file
 
+
+notification_sound = "notification1.mp3"  # Replace with a valid sound file
+pygame.mixer.music.load(notification_sound)
+"""
 try:
     notification_sound = pygame.mixer.Sound(notification_sound)
 except pygame.error as e:
-    print(f"Error loading sound: {e}")
+    print(f"Error loading sound: {e}") """
 
-
+'''
 def play_notification():
     """Play the notification sound in a separate thread."""
 
@@ -57,6 +60,9 @@ def play_notification():
             print(f"Sound playback error: {e}")
 
     threading.Thread(target=play, daemon=True).start()
+'''
+
+
 
 
 
@@ -78,6 +84,169 @@ def save_chat_history():
 
 save_button = tk.Button(root, text="Save Chat", font=font_style, bg="#FF5733", fg="white", command=save_chat_history)
 save_button.pack(pady=5)
+
+# Add these global variables and functions to both client.py and server.py
+# is_paused = False
+
+
+def open_audio_player(file_path):
+    global is_paused
+
+    # Load audio to get duration (supports WAV/MP3 via pygame)
+    try:
+        sound = pygame.mixer.Sound(file_path)
+        duration = sound.get_length()  # in seconds
+        sound = None  # Free resources
+    except Exception as e:
+        messagebox.showerror("Error", f"Could not load audio: {e}")
+        return
+
+    # Convert duration to MM:SS format
+    mins, secs = divmod(int(duration), 60)
+    duration_str = f"{mins:02d}:{secs:02d}"
+
+    # Player window setup
+    player = tk.Toplevel()
+    player.title("🎵 Audio Player")
+    player.configure(bg="#2E2E2E")
+    player.resizable(False, False)
+
+    # Styling variables
+    bg_color = "#2E2E2E"
+    fg_color = "white"
+    accent_color = "#4CAF50"
+    progress_bg = "#404040"
+
+    # Header with filename
+    tk.Label(
+        player,
+        text=os.path.basename(file_path),
+        bg=bg_color,
+        fg=fg_color,
+        font=("Arial", 10, "bold")
+    ).pack(pady=10)
+
+    # Time display frame
+    time_frame = tk.Frame(player, bg=bg_color)
+    time_frame.pack(pady=5)
+
+    current_time = tk.Label(time_frame, text="00:00", bg=bg_color, fg=fg_color)
+    current_time.pack(side=tk.LEFT)
+
+    tk.Label(time_frame, text="/", bg=bg_color, fg=fg_color).pack(side=tk.LEFT)
+    total_time = tk.Label(time_frame, text=duration_str, bg=bg_color, fg=fg_color)
+    total_time.pack(side=tk.LEFT)
+
+    # Progress bar (Canvas-based)
+    progress_canvas = tk.Canvas(
+        player,
+        height=8,
+        width=300,
+        bg=progress_bg,
+        highlightthickness=0
+    )
+    progress_canvas.pack(pady=5, padx=10)
+    progress_line = progress_canvas.create_rectangle(0, 0, 0, 8, fill=accent_color, outline="")
+
+    # Volume control
+    volume_frame = tk.Frame(player, bg=bg_color)
+    volume_frame.pack(pady=10)
+    tk.Label(volume_frame, text="🔊", bg=bg_color, fg=fg_color).pack(side=tk.LEFT)
+    volume_slider = tk.Scale(
+        volume_frame,
+        from_=0,
+        to=100,
+        orient=tk.HORIZONTAL,
+        bg=bg_color,
+        fg=fg_color,
+        troughcolor=progress_bg,
+        command=lambda v: pygame.mixer.music.set_volume(float(v)/100))
+    volume_slider.set(100)
+    volume_slider.pack(side=tk.LEFT)
+
+    # Control buttons
+    btn_frame = tk.Frame(player, bg=bg_color)
+    btn_frame.pack(pady=10)
+
+    # Play/Pause/Stop buttons with modern symbols
+    play_btn = tk.Button(
+        btn_frame,
+        text="▶",
+        font=("Arial", 14),
+        bg=accent_color,
+        fg=fg_color,
+        borderwidth=0,
+        command=lambda: play()
+    )
+    play_btn.pack(side=tk.LEFT, padx=5)
+
+    pause_btn = tk.Button(
+        btn_frame,
+        text="⏸",
+        font=("Arial", 14),
+        bg=accent_color,
+        fg=fg_color,
+        borderwidth=0,
+        command=lambda: pause_resume()
+    )
+    pause_btn.pack(side=tk.LEFT, padx=5)
+
+    stop_btn = tk.Button(
+        btn_frame,
+        text="⏹",
+        font=("Arial", 14),
+        bg=accent_color,
+        fg=fg_color,
+        borderwidth=0,
+        command=lambda: stop()
+    )
+    stop_btn.pack(side=tk.LEFT, padx=5)
+
+    # Update progress bar
+    def update_progress():
+        if pygame.mixer.music.get_busy() and not is_paused:
+            current_pos = pygame.mixer.music.get_pos()/1000  # Convert to seconds
+            progress = (current_pos / duration) * 300  # 300 = canvas width
+            progress_canvas.coords(progress_line, 0, 0, progress, 8)
+
+            # Update time label
+            mins, secs = divmod(int(current_pos), 60)
+            current_time.config(text=f"{mins:02d}:{secs:02d}")
+            player.after(200, update_progress)  # Update every 200ms
+        elif is_paused:
+            player.after(200, update_progress)  # Keep checking if unpaused
+
+    def play():
+        global is_paused
+        try:
+            if is_paused:
+                pygame.mixer.music.unpause()
+                is_paused = False
+            else:
+                pygame.mixer.music.load(file_path)
+                pygame.mixer.music.play()
+            update_progress()
+        except Exception as e:
+            messagebox.showerror("Error", f"Playback error: {e}")
+
+    def pause_resume():
+        global is_paused
+        if not is_paused:
+            pygame.mixer.music.pause()
+            is_paused = True
+        else:
+            pygame.mixer.music.unpause()
+            is_paused = False
+
+    def stop():
+        global is_paused
+        pygame.mixer.music.stop()
+        is_paused = False
+        progress_canvas.coords(progress_line, 0, 0, 0, 8)
+        current_time.config(text="00:00")
+
+    # Handle window close
+    player.protocol("WM_DELETE_WINDOW", lambda: (stop(), player.destroy()))
 
 
 
@@ -126,6 +295,33 @@ def send_message():
 
     threading.Thread(target=send, daemon=True).start()
 
+
+def attach_audio():
+    file_path = filedialog.askopenfilename(
+        title="Select Audio File",
+        filetypes=(("WAV files", "*.wav"), ("MP3 files", "*.mp3"), ("All files", "*.*")))
+    if not file_path:
+        return
+    try:
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        file_type = "Audio"
+
+        # Send file header
+        header = f"FILE::{file_type}::{file_name}::{file_size}\n".encode()
+        client_socket.sendall(header)
+
+        # Send file in chunks
+        with open(file_path, "rb") as file:
+            while chunk := file.read(1024):
+                client_socket.sendall(chunk)
+
+        chat_history.insert(tk.END, f"Sent {file_type}: {file_name}\n", "info")
+    except Exception as e:
+        chat_history.insert(tk.END, f"Error sending {file_type}: {e}\n", "error")
+
+
+
 def toggle_theme():
     current_bg = chat_history.cget("bg")
     if current_bg == "white":
@@ -158,11 +354,39 @@ typing_label.pack()
 
 
 
+def attach_image():
+    file_path = filedialog.askopenfilename(title="Select Image File",
+                                           filetypes=(("PNG files", "*.png"), ("JPEG files", "*.jpg;*.jpeg"),
+                                                      ("All files", "*.*")))
+    if not file_path:
+        return
+
+    try:
+        file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        file_type = "Image"
+
+        header = f"FILE::{file_type}::{file_name}::{file_size}\n".encode()
+        client_socket.sendall(header)
+
+        with open(file_path, "rb") as file:
+            while chunk := file.read(1024):
+                client_socket.sendall(chunk)
+
+        chat_history.insert(tk.END, f"Sent {file_type}: {file_name}\n", "info")
+    except Exception as e:
+        chat_history.insert(tk.END, f"Error sending {file_type}: {e}\n", "error")
+
+# Add attach button to the server's UI (in the entry_frame section)
+attach_button = tk.Button(entry_frame, text="Attach", font=font_style, bg="#FF5733", fg="white", command=attach_image)
+attach_button.pack(side=tk.RIGHT, padx=5)
 
 
-
-
-
+attach_audio_button = tk.Button(
+    entry_frame, text="Attach Audio", font=font_style,
+    bg="#FF5733", fg="white", command=attach_audio
+)
+attach_audio_button.pack(side=tk.RIGHT, padx=5)
 
 
 
@@ -175,19 +399,78 @@ send_button = tk.Button(entry_frame, text="Send", font=font_style, bg="#FF5733",
 send_button.pack(side=tk.RIGHT, padx=5)
 
 # Function to receive messages from the client
+# def receive_messages():
+#     while True:
+#         try:
+#             response = client_socket.recv(1024).decode()
+#             if not response:
+#                 break
+#
+#             decrypted_response = decrypt_message(response)
+#             # Play notification sound
+#             pygame.mixer.music.play()
+#             chat_history.insert(tk.END, f"{get_timestamp()}Client: {decrypted_response}\n", "client_message")
+#
+#         except:
+#             break
+
+
+# Modify the receive_messages function
 def receive_messages():
     while True:
         try:
-            response = client_socket.recv(1024).decode()
-            if not response:
+            data = client_socket.recv(1024)
+            if not data:
                 break
 
-            decrypted_response = decrypt_message(response)
-            # Play notification sound
-            play_notification()
-            chat_history.insert(tk.END, f"{get_timestamp()}Client: {decrypted_response}\n", "client_message")
+            if data.startswith(b"FILE::"):
+                try:
+                    header_end = data.index(b'\n')
+                except ValueError:
+                    header_end = len(data)
+                header = data[:header_end].decode().strip()
+                parts = header.split("::")
+                if len(parts) < 4:
+                    continue
+                file_type, file_name, file_size = parts[1], parts[2], int(parts[3])
+                file_data = data[header_end+1:]
 
-        except:
+                os.makedirs("received_files", exist_ok=True)
+                file_path = os.path.join("received_files", file_name)
+
+                with open(file_path, 'wb') as f:
+                    f.write(file_data)
+                    received = len(file_data)
+                    while received < file_size:
+                        chunk = client_socket.recv(min(1024, file_size - received))
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        received += len(chunk)
+                if file_type == "Audio":
+                    chat_history.insert(tk.END, f"{get_timestamp()}Received {file_type}: {file_name}\n", "info")
+                    chat_history.insert(tk.END, f"Click to play: {file_name}\n", "audio_hyperlink")
+                    chat_history.tag_config("audio_hyperlink", foreground="purple", underline=1)
+                    chat_history.tag_bind("audio_hyperlink", "<Button-1>",
+                                          lambda e, fp=file_path: open_audio_player(fp))
+
+                chat_history.insert(tk.END, f"{get_timestamp()}Received {file_type}: {file_name}\n", "info")
+                chat_history.insert(tk.END, f"Click to open: {file_name}\n", "hyperlink")
+                chat_history.tag_config("hyperlink", foreground="blue", underline=1)
+                chat_history.tag_bind("hyperlink", "<Button-1>", lambda e, fp=file_path: os.startfile(fp))
+                pygame.mixer.music.play()
+
+            else:
+                try:
+                    response = data.decode()
+                    decrypted_response = decrypt_message(response)
+                    chat_history.insert(tk.END, f"{get_timestamp()}Client: {decrypted_response}\n", "client_message")
+                except Exception as e:
+                    print(f"Decryption error: {e}")
+        except ConnectionResetError:
+            break
+        except Exception as e:
+            print(f"Error: {e}")
             break
 
 threading.Thread(target=receive_messages, daemon=True).start()
